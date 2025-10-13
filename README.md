@@ -16,7 +16,7 @@ This toolkit automatically fits clear-sky radiance models to all-sky images and 
 
 ---
 
-## Example
+## Example 1
 
 <table>
 <tr>
@@ -33,9 +33,8 @@ This toolkit automatically fits clear-sky radiance models to all-sky images and 
 
 ---
 
-## Results Gallery
 
-### Arizona Camera 
+### Example 2 
 
 <table>
 <tr>
