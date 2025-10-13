@@ -22,11 +22,12 @@ from colorspace_utils import srgb_to_linear
 from scipy.optimize import least_squares
 
 # ----------------- CONFIG -----------------
-MOBOTIX_IMG = Path("/Users/max/Desktop/Mobotix_20240613162000_512x512.jpg")
-SEMANTIC_MASK = Path("/Users/max/Downloads/Mobotix_20240613162000_512x512_mask-2.png")
+BASE_DIR = Path(__file__).parent.parent
+MOBOTIX_IMG = BASE_DIR / "input/mobotix_rgb.png"
+SEMANTIC_MASK = BASE_DIR / "input/masks/mobotix_mask.png"
 
-OUT_JSON = Path("/Users/max/Desktop/PhD/WUR/sky-transfer/synthetic-clearsky-rgb/output/parameters/clearsky_RGB_mobotix.json")
-OUT_PLOT = Path("/Users/max/Desktop/PhD/WUR/sky-transfer/synthetic-clearsky-rgb/output/diagnostics/fit_diagnostics_mobotix.png")
+OUT_JSON = BASE_DIR / "output/mobotix/coefficients.json"
+OUT_PLOT = BASE_DIR / "output/mobotix/diagnostics.png"
 
 # Semantic mask classes (RGB values)
 CLASS_FROM_RGB = {

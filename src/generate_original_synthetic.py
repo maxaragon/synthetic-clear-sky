@@ -31,10 +31,10 @@ from scipy.ndimage import binary_erosion
 SCRIPT_DIR = Path(__file__).parent
 BASE_DIR = SCRIPT_DIR.parent
 
-REAL_IMG = BASE_DIR / "input/clearsky_128px.png"
+REAL_IMG = BASE_DIR / "input/original_128px_rgb.png"
 COEFFS_JSON = BASE_DIR / "output/parameters/clearsky_RGB_coefficients.json"
-OUT_SYNTHETIC = BASE_DIR / "output/synthetic/synthetic_clearsky.png"
-OUT_COMPARISON = BASE_DIR / "output/synthetic/comparison_real_vs_synthetic.png"
+OUT_SYNTHETIC = BASE_DIR / "output/original_128px/synthetic_clearsky.png"
+OUT_COMPARISON = BASE_DIR / "output/original_128px/comparison.png"
 
 # Geometry settings (must match unwrap)
 K_STEREO = 1.4

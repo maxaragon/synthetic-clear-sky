@@ -14,12 +14,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 from colorspace_utils import srgb_to_linear
 
 # ----------------- CONFIG -----------------
-MOBOTIX_IMG = Path("/Users/max/Desktop/Mobotix_20240613162000_512x512.jpg")
-SEMANTIC_MASK = Path("/Users/max/Downloads/Mobotix_20240613162000_512x512_mask-2.png")
-COEFFS_JSON = Path("/Users/max/Desktop/PhD/WUR/sky-transfer/synthetic-clearsky-rgb/output/parameters/clearsky_RGB_mobotix.json")
+BASE_DIR = Path(__file__).parent.parent
+MOBOTIX_IMG = BASE_DIR / "input/mobotix_rgb.png"
+SEMANTIC_MASK = BASE_DIR / "input/masks/mobotix_mask.png"
+COEFFS_JSON = BASE_DIR / "output/mobotix/coefficients.json"
 
-OUT_SYNTHETIC = Path("/Users/max/Desktop/PhD/WUR/sky-transfer/synthetic-clearsky-rgb/output/synthetic/mobotix_synthetic_clearsky.png")
-OUT_COMPARISON = Path("/Users/max/Desktop/PhD/WUR/sky-transfer/synthetic-clearsky-rgb/output/synthetic/mobotix_comparison.png")
+OUT_SYNTHETIC = BASE_DIR / "output/mobotix/synthetic_clearsky.png"
+OUT_COMPARISON = BASE_DIR / "output/mobotix/comparison.png"
 
 K_STEREO = 1.4  # K-tan stereographic projection
 BETA = 0.32

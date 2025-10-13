@@ -38,7 +38,7 @@ from scipy.ndimage import binary_erosion
 SCRIPT_DIR = Path(__file__).parent
 BASE_DIR = SCRIPT_DIR.parent
 
-IMG = BASE_DIR / "input/clearsky_128px.png"
+IMG = BASE_DIR / "input/original_128px_rgb.png"
 OUT_JSON = BASE_DIR / "output/parameters/clearsky_RGB_coefficients.json"
 OUT_PLOT = BASE_DIR / "output/diagnostics/fit_diagnostics.png"
 

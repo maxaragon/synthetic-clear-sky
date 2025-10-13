@@ -18,10 +18,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 from colorspace_utils import srgb_to_linear, linear_to_srgb
 
 # Default paths
-DEFAULT_IMAGE = Path("/Users/max/Desktop/pyranovision_rgb.png")
-DEFAULT_MASK = Path("/Users/max/Desktop/pyranovision_rgb_mask-4_CORRECTED.png")
-DEFAULT_COEFFS = Path(__file__).parent.parent / "output/pyranovision/coefficients.json"
-DEFAULT_OUTPUT = Path(__file__).parent.parent / "output/pyranovision"
+BASE_DIR = Path(__file__).parent.parent
+DEFAULT_IMAGE = BASE_DIR / "input/pyranovision_rgb.png"
+DEFAULT_MASK = BASE_DIR / "input/masks/pyranovision_mask.png"
+DEFAULT_COEFFS = BASE_DIR / "output/pyranovision/coefficients.json"
+DEFAULT_OUTPUT = BASE_DIR / "output/pyranovision"
 
 # Default parameters (optimal from testing)
 DEFAULT_E_SCALE = 1.4
