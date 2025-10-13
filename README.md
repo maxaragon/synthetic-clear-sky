@@ -260,8 +260,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 ## Contact
 
 **Max Aragon**  
-Wageningen University & Research  
-Meteorology & Air Quality  
 [GitHub](https://github.com/maxaragon)
 
 **Last updated:** October 13, 2025
