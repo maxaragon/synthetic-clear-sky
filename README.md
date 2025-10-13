@@ -1,6 +1,6 @@
 # Synthetic Clear-Sky Generation
 
-**Automatic clear-sky synthesis for ANY all-sky camera** using the Chauvin et al. (2015) photometric model with intelligent projection detection, per-channel RGB fitting, and constrained optimization.
+**Automatic clear-sky synthesis for all-sky cameras** using the Chauvin et al. (2015) photometric model with projection detection, per-channel RGB fitting, and optimization.
 
 ## Overview
 
