@@ -35,7 +35,24 @@ This toolkit automatically fits clear-sky radiance models to all-sky images and 
 
 ## Results Gallery
 
-Synthetic clear-sky outputs from different all-sky cameras:
+### Arizona Camera (Best Result ⭐)
+
+<table>
+<tr>
+<td><img src="input/arizona_rgb.png" width="300"/></td>
+<td><img src="output/arizona/synthetic_clearsky.png" width="300"/></td>
+</tr>
+<tr>
+<td align="center"><b>Input: Real All-Sky Image</b><br/>(224×224px, Arizona camera)</td>
+<td align="center"><b>Output: Synthetic Clear-Sky</b><br/>(Clouds removed, radiance model)</td>
+</tr>
+</table>
+
+**Method:** Per-channel RGB | **Projection:** Equisolid angle | **Combined Error:** 0.169 ⭐ (best!)
+
+---
+
+### All Cameras - Synthetic Clear-Sky Outputs
 
 <table>
 <tr>
