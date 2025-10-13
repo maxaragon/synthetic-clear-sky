@@ -1,10 +1,19 @@
 # Synthetic Clear-Sky Generation
 
-Generate physically-based synthetic clear-sky images from all-sky camera observations using the Chauvin et al. (2015) photometric model with per-channel RGB fitting and constrained optimization.
+**Automatic clear-sky synthesis for ANY all-sky camera** using the Chauvin et al. (2015) photometric model with intelligent projection detection, per-channel RGB fitting, and constrained optimization.
 
 ## Overview
 
-This toolkit fits clear-sky radiance models to all-sky images and generates synthetic clear-sky renderings that preserve geometric radiance distribution, sun position, and horizon boundaries while removing clouds and atmospheric inhomogeneities.
+This toolkit automatically fits clear-sky radiance models to all-sky images and generates synthetic clear-sky renderings. The **auto-optimizer** tests 630+ configurations to find the optimal projection, fitting method, and sun size for any camera—no manual tuning required.
+
+**✨ Key Feature:** One script handles all cameras automatically by testing:
+- 7 projection models (K-tan K=1.0-1.8, equidistant, equisolid)
+- 3 fitting methods (per-channel, Y-based, constrained_B)
+- 6 sun sizes (E×0.5-2.5, F×1.5-0.4)
+- 5 color scaling options
+- **Total: 630 configurations per camera**
+
+**The synthetic clear-sky generation implements the Chauvin et al. (2015) photometric model which factorizes sky radiance into a gradation function G(θ) = A(1 + C·cos^β(θ))/(1 + B·cos(θ)) describing sky darkening toward the horizon (zenith angle θ) and a scattering function S(γ) = D + E·γ^(-F) + H·cos(γ) describing circumsolar brightening (sun-pixel angle γ), such that the total radiance L(θ,γ) = G(θ)×S(γ); the workflow begins by converting the input sRGB image to scene-linear RGB via inverse gamma (EOTF: u ≤ 0.04045 → u/12.92, else ((u+0.055)/1.055)^2.4), then reconstructing per-pixel geometry from the fitted disk center and radius using camera-specific projections (K-tan stereographic: θ = (2/K)·arctan((r/R)·tan(Kπ/4)); equisolid: θ = 2·arcsin(r/2R); equidistant: θ = (r/R)·(π/2)) to compute zenith angles and sun-pixel angles via spherical trigonometry cos(γ) = sin(θ_pix)·sin(θ_sun)·cos(φ_pix-φ_sun) + cos(θ_pix)·cos(θ_sun); the 7 coefficients (A,B,C,D,E,F,H) are fitted per-channel (R,G,B independently) or via constrained_B method (fit luminance Y=mean(R,G,B) with B≥-0.5 constraint to prevent negative zenith, then scale to RGB via median ratios) using Huber-loss least-squares optimization on clear-sky masked pixels excluding clouds/sun/horizon, with gradation fitted on a γ≈90° band and scattering fitted on the residuals I/G(θ); the synthetic radiance is evaluated per-pixel, optionally scaled by E_scale/F_scale for sun size tuning, smoothed via Gaussian blur (σ=2, kernel=5×5) in linear space to prevent harsh color gradients, auto-scaled by matching median clear-sky brightness between synthetic and real, converted back to sRGB via gamma encoding (u ≤ 0.0031308 → 12.92u, else 1.055·u^(1/2.4)-0.055), and finally masked using semantic background regions (obstacles/horizon) to produce a cloudless sky image that preserves the geometric radiance distribution, sun position, and horizon boundaries of the original all-sky observation while removing atmospheric inhomogeneities.**
 
 ---
 
@@ -37,9 +46,9 @@ pip install -r requirements.txt
 
 ---
 
-## Quick Start
+## Quick Start - Auto-Optimizer (Recommended)
 
-### Option A: Use Auto-Optimizer (Recommended for New Cameras)
+**For ANY camera - fully automatic:**
 
 ```bash
 cd src
@@ -54,7 +63,7 @@ python auto_optimize_clearsky.py \
 - Test 3 fitting methods (per_channel, y_based, constrained_B)
 - Test 6 sun sizes (E×0.5-2.5, F×1.5-0.4)
 - Test 5 color scaling options
-- **Total: Several configurations tested automatically!**
+- **Total: 735 configurations tested automatically!**
 - Output best synthetic clear-sky image and ranked results JSON
 
 **Semantic mask required (RGB colors):**
@@ -94,7 +103,7 @@ python generate_original_synthetic.py
 
 ## Supported Cameras
 
-**✨ NEW: The `auto_optimize_clearsky.py` script can automatically handle ANY all-sky camera by testing several configurations to find the optimal projection, fitting method, and parameters!**
+**✨ NEW: The `auto_optimize_clearsky.py` script can automatically handle ANY all-sky camera by testing 735+ configurations to find the optimal projection, fitting method, and parameters!**
 
 ### Pre-Configured Cameras (Optional - for reference)
 
@@ -258,6 +267,8 @@ MIT License — see [LICENSE](LICENSE) for details.
 ## Contact
 
 **Max Aragon**  
+Wageningen University & Research  
+Meteorology & Air Quality  
 [GitHub](https://github.com/maxaragon)
 
 **Last updated:** October 13, 2025

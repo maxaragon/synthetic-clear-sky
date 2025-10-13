@@ -93,6 +93,15 @@ def equidistant_theta_from_radius(r, R):
 def equisolid_theta_from_radius(r, R):
     return 2.0 * np.arcsin(np.clip(r / (2.0 * R), 0, 1))
 
+def circular_mask(image):
+    """Apply a perfect circular mask to an image."""
+    h, w = image.shape[:2]
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.circle(mask, (w // 2, h // 2), min(h, w) // 2, 255, -1)
+    if image.ndim == 3:
+        return cv2.bitwise_and(image, image, mask=mask)
+    return cv2.bitwise_and(image, mask)
+
 def compute_sun_pixel_angle(az_pix, ze_pix, az_sun, ze_sun):
     az_pix_rad = np.radians(az_pix)
     ze_pix_rad = np.radians(ze_pix)
@@ -682,9 +691,97 @@ def optimize_clearsky(image_path, mask_path, output_dir):
     
     print(f"\n✅ Saved results: {results_file}")
     
-    # Create comparison plot for best
-    print("\n[Generating Best Comparison]")
-    # TODO: Regenerate best and save comparison image
+    # Generate best synthetic clear-sky image
+    print("\n[Generating Best Synthetic Clear-Sky]")
+    print(f"  Configuration: {best['fitting_method']} ({best['projection']})")
+    print(f"  Sun size: E×{best['E_scale']:.2f}, F×{best['F_scale']:.2f}")
+    print(f"  Blue boost: {best['blue_boost']:.2f}×")
+    
+    # Regenerate geometry with best projection
+    proj_name = best['projection']
+    proj_type = None
+    proj_K = None
+    for pn, pt, pk in PROJECTIONS:
+        if pn == proj_name:
+            proj_type = pt
+            proj_K = pk
+            break
+    
+    # Rebuild geometry
+    theta, ze_deg, az_nav, disk = build_geometry(H, W, cx, cy, R, proj_type, K=proj_K or 1.4)
+    
+    # Sun angles
+    sun_y_int, sun_x_int = int(sun_y), int(sun_x)
+    sun_az_nav = az_nav[sun_y_int, sun_x_int]
+    sun_ze_deg = ze_deg[sun_y_int, sun_x_int]
+    
+    SPA_deg = compute_sun_pixel_angle(az_nav, ze_deg, sun_az_nav, sun_ze_deg)
+    gamma = np.radians(SPA_deg)
+    
+    # Rebuild fitting mask
+    non_horizon = (ze_deg <= ZE_HORIZON_CUTOFF)
+    fitting_mask_best = clear_sky_mask & disk & non_horizon
+    band = fitting_mask_best & (SPA_deg >= BAND_GAMMA_MIN) & (SPA_deg <= BAND_GAMMA_MAX)
+    
+    # Refit with best method
+    if best['fitting_method'] == "per_channel":
+        coeffs_best = fit_per_channel(rgb_lin, theta, gamma, fitting_mask_best, band, constrain_B=False)
+    elif best['fitting_method'] == "y_based":
+        coeffs_best = fit_y_based(rgb_lin, theta, gamma, fitting_mask_best, band, percentile=50, constrain_B=False)
+    elif best['fitting_method'] == "constrained_B":
+        coeffs_best = fit_y_based(rgb_lin, theta, gamma, fitting_mask_best, band, percentile=50, constrain_B=True)
+    
+    # Generate synthetic
+    _, rgb_syn_lin = generate_synthetic(coeffs_best, theta, gamma, disk, 
+                                       best['E_scale'], best['F_scale'], best['blue_boost'])
+    
+    # Auto-scale
+    real_median = np.array([np.median(rgb_lin[..., i][clear_sky_mask]) for i in range(3)])
+    syn_median = np.array([np.median(rgb_syn_lin[..., i][clear_sky_mask]) for i in range(3)])
+    scale = real_median / (syn_median + 1e-6)
+    for i in range(3):
+        rgb_syn_lin[..., i] *= scale[i]
+    
+    # Convert to sRGB
+    rgb_syn_srgb = linear_to_srgb(rgb_syn_lin)
+    
+    # Apply background mask
+    bg_mask = class_masks.get("background", np.zeros((H, W), dtype=bool))
+    rgb_syn_final = rgb_syn_srgb.copy()
+    rgb_syn_final[bg_mask] = 0.0
+    
+    # Apply circular mask
+    rgb_syn_u8 = (np.clip(rgb_syn_final, 0, 1) * 255).astype(np.uint8)
+    rgb_syn_u8 = circular_mask(rgb_syn_u8)
+    
+    # Save synthetic
+    syn_file = output_dir / "best_synthetic_clearsky.png"
+    Image.fromarray(rgb_syn_u8).save(syn_file)
+    print(f"✅ Saved: {syn_file}")
+    
+    # Create comparison
+    comp_file = output_dir / "best_comparison.png"
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    
+    axes[0].imshow(rgb)
+    axes[0].set_title("Real Sky", fontsize=14)
+    axes[0].axis('off')
+    
+    axes[1].imshow(rgb_syn_u8)
+    axes[1].set_title(f"Best Synthetic Clear-Sky\n{best['fitting_method']} ({best['projection']})", fontsize=14)
+    axes[1].axis('off')
+    
+    diff = np.abs(rgb - (rgb_syn_u8.astype(np.float32)/255.0))
+    diff_masked = diff.copy()
+    diff_masked[bg_mask] = 0.0
+    axes[2].imshow(diff_masked, cmap='hot', vmin=0, vmax=0.3)
+    axes[2].set_title(f"Difference (L1)\nCombined Error: {best['combined_error']:.3f}", fontsize=14)
+    axes[2].axis('off')
+    
+    plt.tight_layout()
+    fig.savefig(comp_file, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"✅ Saved: {comp_file}")
     
     print("="*80)
     return best, results
