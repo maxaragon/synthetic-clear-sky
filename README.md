@@ -54,7 +54,7 @@ python auto_optimize_clearsky.py \
 - Test 3 fitting methods (per_channel, y_based, constrained_B)
 - Test 6 sun sizes (E×0.5-2.5, F×1.5-0.4)
 - Test 5 color scaling options
-- **Total: 735 configurations tested automatically!**
+- **Total: Several configurations tested automatically!**
 - Output best synthetic clear-sky image and ranked results JSON
 
 **Semantic mask required (RGB colors):**
@@ -94,7 +94,7 @@ python generate_original_synthetic.py
 
 ## Supported Cameras
 
-**✨ NEW: The `auto_optimize_clearsky.py` script can automatically handle ANY all-sky camera by testing 735+ configurations to find the optimal projection, fitting method, and parameters!**
+**✨ NEW: The `auto_optimize_clearsky.py` script can automatically handle ANY all-sky camera by testing several configurations to find the optimal projection, fitting method, and parameters!**
 
 ### Pre-Configured Cameras (Optional - for reference)
 
