@@ -33,6 +33,48 @@ This toolkit automatically fits clear-sky radiance models to all-sky images and 
 
 ---
 
+## Results Gallery
+
+Synthetic clear-sky outputs from different all-sky cameras:
+
+<table>
+<tr>
+<td align="center"><b>Original 128px</b><br/>(VISTA Camera)</td>
+<td align="center"><b>Pyranovision</b><br/>(512×512px)</td>
+</tr>
+<tr>
+<td><img src="output/original_128px/synthetic_clearsky.png" width="280"/></td>
+<td><img src="output/pyranovision/synthetic_clearsky.png" width="280"/></td>
+</tr>
+<tr>
+<td>K-tan K=1.4, Per-channel<br/>Error: 0.089</td>
+<td>K-tan K=1.2, Constrained_B<br/>Error: 0.317</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td align="center"><b>Mobotix</b><br/>(512×512px)</td>
+<td align="center"><b>Arizona</b><br/>(224×224px)</td>
+</tr>
+<tr>
+<td><img src="output/mobotix/synthetic_clearsky.png" width="280"/></td>
+<td><img src="output/arizona/synthetic_clearsky.png" width="280"/></td>
+</tr>
+<tr>
+<td>K-tan K=1.6, Per-channel<br/>Sun: E×0.7, F×1.2</td>
+<td>Equisolid, Per-channel<br/>Error: 0.169 ⭐</td>
+</tr>
+</table>
+
+**Key Findings:**
+- ✅ **Arizona** achieved the best error (0.169) using equisolid projection
+- ✅ **Pyranovision** uses constrained_B to prevent chromatic artifacts
+- ✅ **Mobotix** required fine-tuned sun size (E×0.7, F×1.2)
+- ✅ All outputs show smooth gradients with no artifacts
+
+---
+
 ## Installation
 
 ```bash
