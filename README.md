@@ -11,9 +11,8 @@ This toolkit automatically fits clear-sky radiance models to all-sky images and 
 - 3 fitting methods (per-channel, Y-based, constrained_B)
 - 6 sun sizes (E×0.5-2.5, F×1.5-0.4)
 - 5 color scaling options
-- **Total: 630 configurations per camera**
 
-**The synthetic clear-sky generation implements the Chauvin et al. (2015) photometric model which factorizes sky radiance into a gradation function G(θ) = A(1 + C·cos^β(θ))/(1 + B·cos(θ)) describing sky darkening toward the horizon (zenith angle θ) and a scattering function S(γ) = D + E·γ^(-F) + H·cos(γ) describing circumsolar brightening (sun-pixel angle γ), such that the total radiance L(θ,γ) = G(θ)×S(γ); the workflow begins by converting the input sRGB image to scene-linear RGB via inverse gamma (EOTF: u ≤ 0.04045 → u/12.92, else ((u+0.055)/1.055)^2.4), then reconstructing per-pixel geometry from the fitted disk center and radius using camera-specific projections (K-tan stereographic: θ = (2/K)·arctan((r/R)·tan(Kπ/4)); equisolid: θ = 2·arcsin(r/2R); equidistant: θ = (r/R)·(π/2)) to compute zenith angles and sun-pixel angles via spherical trigonometry cos(γ) = sin(θ_pix)·sin(θ_sun)·cos(φ_pix-φ_sun) + cos(θ_pix)·cos(θ_sun); the 7 coefficients (A,B,C,D,E,F,H) are fitted per-channel (R,G,B independently) or via constrained_B method (fit luminance Y=mean(R,G,B) with B≥-0.5 constraint to prevent negative zenith, then scale to RGB via median ratios) using Huber-loss least-squares optimization on clear-sky masked pixels excluding clouds/sun/horizon, with gradation fitted on a γ≈90° band and scattering fitted on the residuals I/G(θ); the synthetic radiance is evaluated per-pixel, optionally scaled by E_scale/F_scale for sun size tuning, smoothed via Gaussian blur (σ=2, kernel=5×5) in linear space to prevent harsh color gradients, auto-scaled by matching median clear-sky brightness between synthetic and real, converted back to sRGB via gamma encoding (u ≤ 0.0031308 → 12.92u, else 1.055·u^(1/2.4)-0.055), and finally masked using semantic background regions (obstacles/horizon) to produce a cloudless sky image that preserves the geometric radiance distribution, sun position, and horizon boundaries of the original all-sky observation while removing atmospheric inhomogeneities.**
+
 
 ---
 
@@ -267,8 +266,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 ## Contact
 
 **Max Aragon**  
-Wageningen University & Research  
-Meteorology & Air Quality  
 [GitHub](https://github.com/maxaragon)
 
 **Last updated:** October 13, 2025
