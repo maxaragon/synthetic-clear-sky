@@ -1,4 +1,4 @@
-# Synthetic Clear-Sky Generation
+# Synthetic clear sky generation
 
 Automated pipeline for generating synthetic clear-sky images from real sky images with clouds using the Chauvin et al. (2015) photometric model.
 
