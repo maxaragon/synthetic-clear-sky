@@ -1,0 +1,46 @@
+{
+  "optimization_mode": "v22_stage4_sun_grid_refinement",
+  "architecture": "4-stage: Grid \u2192 Continuous \u2192 Sun (L-BFGS-B) \u2192 Sun Grid Refinement",
+  "band_selection": "Prefer single-band when clear-sky error within 15% (better color)",
+  "tolerance": 0.15,
+  "stage_used": 4,
+  "stage1_grid": {
+    "projection": "equisolid",
+    "method": "per_channel",
+    "band_strategy": "single",
+    "band_name": "single-band",
+    "E_scale": 0.8,
+    "F_scale": 0.9,
+    "error": 0.14842313583940267
+  },
+  "stage2_continuous": {
+    "error": 0.14759996756911276
+  },
+  "stage3_sun": {
+    "error": 0.1320609286427498,
+    "sun_intensity": 0.5,
+    "sun_radius_deg": 0.266,
+    "bloom_sigma_px": 10.0,
+    "bloom_amplitude": 0.08276486898246885
+  },
+  "stage4_sun_grid": {
+    "error": 0.12947819493710994,
+    "grid_size": "6\u00d77\u00d76",
+    "best_params": {
+      "sun_intensity": 0.1,
+      "sun_radius_factor": 0.3,
+      "sun_radius_deg": 0.0798,
+      "bloom_sigma_px": 7.0,
+      "bloom_amplitude": 0.08276486898246885
+    },
+    "clearsky_error": 0.020692232996225357,
+    "sun_error": 0.3833121061325073
+  },
+  "final_result": {
+    "stage_used": 4,
+    "final_error": 0.12947819493710994,
+    "clearsky_error": 0.020692232996225357,
+    "sun_error": 0.3833121061325073
+  },
+  "timestamp": "2025-10-18T02:51:45.422795"
+}
