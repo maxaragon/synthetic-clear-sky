@@ -209,10 +209,6 @@ Both errors use L1 norm in linear RGB space.
 
 - Chauvin, R., Nou, J., Thil, S., Traoré, A., Grieu, S. (2015). "Cloud detection methodology based on a sky-imaging system." *Energy Procedia*, 69, 1970-1980.
 
-## 📧 Contact
-
-For questions or issues, contact the PhD research team at WUR.
-
 ---
 
 **Last Updated**: 2025-01-18  
