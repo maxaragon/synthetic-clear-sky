@@ -842,6 +842,7 @@ def optimize_hybrid_with_sun(image_path, mask_path, output_dir):
                 'E_scale': float(best_grid['E_scale']),
                 'F_scale': float(best_grid['F_scale']),
                 'error': float(best_grid['error']),
+                'coefficients': best_grid['coeffs'],  # Export fitted Chauvin coefficients
             },
             'stage2_continuous': {
                 'error': float(stage2_error),

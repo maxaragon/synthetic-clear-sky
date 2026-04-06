@@ -1,0 +1,19 @@
+{
+  "optimization_mode": "realistic_sun_v2",
+  "architecture": "Real Sun (preserved) + Chauvin Sky + Smooth Transition Blending",
+  "sun_strategy": "Keep real pixels in core, smooth blend to synthetic sky",
+  "fitting_strategy": {
+    "band_strategy": "single-band",
+    "E_scale": 0.8,
+    "F_scale": 0.9,
+    "grid_error": 0.22668483704328538,
+    "refined_error": 0.22228019312024117,
+    "improvement_pct": 1.9430694970582196
+  },
+  "final_result": {
+    "final_error": 0.04287409111857414,
+    "clearsky_error": 0.03754955530166626,
+    "sun_error": 0.055298008024692535
+  },
+  "timestamp": "2025-10-23T02:55:32.886461"
+}

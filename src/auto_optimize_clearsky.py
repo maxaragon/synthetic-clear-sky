@@ -93,6 +93,10 @@ def equidistant_theta_from_radius(r, R):
 def equisolid_theta_from_radius(r, R):
     return 2.0 * np.arcsin(np.clip(r / (2.0 * R), 0, 1))
 
+def orthographic_theta_from_radius(r, R):
+    """Orthographic projection: r = R × sin(θ)"""
+    return np.arcsin(np.clip(r / R, 0, 1))
+
 def circular_mask(image):
     """Apply a perfect circular mask to an image."""
     h, w = image.shape[:2]
@@ -163,6 +167,8 @@ def build_geometry(H, W, cx, cy, R, proj_type, K=1.4):
         theta = equidistant_theta_from_radius(r_clipped, R)
     elif proj_type == "equisolid":
         theta = equisolid_theta_from_radius(r_clipped, R)
+    elif proj_type == "orthographic":
+        theta = orthographic_theta_from_radius(r_clipped, R)
     else:
         raise ValueError(f"Unknown projection: {proj_type}")
     

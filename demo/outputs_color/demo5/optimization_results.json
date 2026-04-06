@@ -1,0 +1,24 @@
+{
+  "optimization_mode": "synthetic_clearsky_optimizer_rgb_color",
+  "architecture": "3-stage: Grid Search \u2192 Continuous Refinement \u2192 RGB Sun Enhancement",
+  "stage_used": 3,
+  "stage3_sun_rgb": {
+    "error": 0.2078627895563841,
+    "sun_intensity_R": 0.5,
+    "sun_intensity_G": 0.5,
+    "sun_intensity_B": 0.45,
+    "sun_radius_factor": 1.0,
+    "sun_radius_deg": 0.266,
+    "bloom_sigma_px": 10.0,
+    "bloom_amplitude_R": 0.1,
+    "bloom_amplitude_G": 0.1,
+    "bloom_amplitude_B": 0.09
+  },
+  "final_result": {
+    "stage_used": 3,
+    "final_error": 0.2078627895563841,
+    "clearsky_error": 0.03813942149281502,
+    "sun_error": 0.6038839817047119
+  },
+  "timestamp": "2025-10-23T01:45:25.134873"
+}
