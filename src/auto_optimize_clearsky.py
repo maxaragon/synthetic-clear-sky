@@ -477,11 +477,14 @@ def evaluate_synthetic(rgb_syn_lin, rgb_real, clear_sky_mask, sun_mask, disk, ze
         sun_error = np.nan
     
     # Combined metric (70% clear-sky, 30% sun)
-    if not np.isnan(clearsky_error) and not np.isnan(sun_error):
-        combined_error = 0.7 * clearsky_error + 0.3 * sun_error
-    else:
+    if np.isnan(clearsky_error):
         combined_error = np.nan
-    
+    elif np.isnan(sun_error):
+        # No explicit sun mask available; fall back to clear-sky-only metric
+        combined_error = clearsky_error
+    else:
+        combined_error = 0.7 * clearsky_error + 0.3 * sun_error
+
     return clearsky_error, sun_error, combined_error
 
 # ==================== MAIN OPTIMIZATION ====================

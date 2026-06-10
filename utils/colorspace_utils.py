@@ -10,7 +10,11 @@ Color space conversions for sky imaging:
 """
 
 import numpy as np
-import colour
+
+try:
+    import colour
+except ImportError:
+    colour = None
 
 
 def srgb_to_linear(rgb_srgb):
@@ -158,6 +162,9 @@ def xyz_to_srgb_colour(xyz, illuminant='E', cat='CAT02', clip=True):
     Returns:
         sRGB values in [0, 1]
     """
+    if colour is None:
+        raise ImportError("colour-science is required for xyz_to_srgb_colour but is not installed")
+
     sRGB = colour.RGB_COLOURSPACES['sRGB']
     illuminant_values = colour.CCS_ILLUMINANTS['CIE 1931 2 Degree Standard Observer'][illuminant]
     

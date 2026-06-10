@@ -18,6 +18,7 @@ Author: Max Aragon, Mines Paris PSL
 """
 
 from pathlib import Path
+import os
 import json
 import numpy as np
 from PIL import Image
@@ -30,16 +31,35 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
 from colorspace_utils import srgb_to_linear, linear_to_srgb
 
 from scipy.optimize import minimize
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, binary_erosion
 import matplotlib.pyplot as plt
 
 # Import grid search functions
 from auto_optimize_clearsky import (
     build_geometry, fit_disk, load_semantic_mask,
-    compute_sun_pixel_angle, G_model, S_model, circular_mask, 
+    compute_sun_pixel_angle, G_model, S_model, circular_mask,
     fit_per_channel, generate_synthetic as generate_synthetic_grid,
-    evaluate_synthetic, ZE_HORIZON_CUTOFF, BAND_GAMMA_MIN, BAND_GAMMA_MAX
+    evaluate_synthetic, ZE_HORIZON_CUTOFF
 )
+
+# Banding defaults for geometric fitting regions (narrower than legacy defaults).
+# Can be overridden via environment vars for fast experiments.
+BAND1_GAMMA_MIN = float(os.environ.get("BAND1_GAMMA_MIN", "89.0"))
+BAND1_GAMMA_MAX = float(os.environ.get("BAND1_GAMMA_MAX", "91.0"))
+BAND2_GAMMA_MIN = float(os.environ.get("BAND2_GAMMA_MIN", "82.0"))
+BAND2_GAMMA_MAX = float(os.environ.get("BAND2_GAMMA_MAX", "89.0"))
+BAND3_GAMMA_MIN = float(os.environ.get("BAND3_GAMMA_MIN", "50.0"))
+BAND3_GAMMA_MAX = float(os.environ.get("BAND3_GAMMA_MAX", "72.0"))
+BAND4_ZE_MAX = float(os.environ.get("BAND4_ZE_MAX", "28.0"))
+
+# Single-band compatibility values (legacy channel): keep sun-antisolar neighborhood tight.
+BAND_GAMMA_MIN = float(os.environ.get("BAND_GAMMA_MIN", "88.5"))
+BAND_GAMMA_MAX = float(os.environ.get("BAND_GAMMA_MAX", "91.5"))
+
+SAFE_SAMPLING_ZENITH_MAX_DEG = 75.0
+SAFE_SAMPLING_EROSION_ITERS = 6
+SAFE_SAMPLING_MIN_PIXELS = 3000
+SUN_EXCLUSION_RADIUS_DEG = 10.0
 
 # ==================== REALISTIC SUN BLENDING ====================
 
@@ -255,7 +275,8 @@ class RealisticSunBlender:
 class ContinuousRefiner:
     """Refines Chauvin parameters (excluding sun)."""
     
-    def __init__(self, rgb_real, class_masks, theta, gamma, disk, ze_deg, fitting_method, sun_exclusion_mask):
+    def __init__(self, rgb_real, class_masks, theta, gamma, disk, ze_deg, fitting_method, sun_exclusion_mask,
+                 sampling_mask=None):
         self.rgb_real = rgb_real
         self.rgb_lin = srgb_to_linear(rgb_real)
         self.theta = theta
@@ -271,9 +292,10 @@ class ContinuousRefiner:
         
         # Exclude sun core from fitting (but include in evaluation!)
         non_horizon = (ze_deg <= ZE_HORIZON_CUTOFF)
-        self.fitting_mask = self.clear_sky_mask & disk & non_horizon & (~sun_exclusion_mask)
+        legacy_mask = self.clear_sky_mask & disk & non_horizon & (~sun_exclusion_mask)
+        self.fitting_mask = sampling_mask if sampling_mask is not None else legacy_mask
         
-        print(f"  Clear-sky fitting region: {self.fitting_mask.sum():,} pixels (sun excluded)")
+        print(f"  Clear-sky fitting region: {self.fitting_mask.sum():,} pixels (safe sampling mask)")
         
         self.real_median = np.array([np.median(self.rgb_lin[..., i][self.fitting_mask]) 
                                      for i in range(3)])
@@ -362,20 +384,116 @@ class ContinuousRefiner:
 
 def create_multi_band_mask(SPA_deg, ze_deg, fitting_mask):
     """Create multi-band mask."""
-    band1 = fitting_mask & (SPA_deg >= 88.0) & (SPA_deg <= 92.0)
-    band2 = fitting_mask & (SPA_deg >= 80.0) & (SPA_deg < 88.0)
-    band3 = fitting_mask & (SPA_deg >= 45.0) & (SPA_deg <= 75.0)
-    band4 = fitting_mask & (ze_deg < 30.0)
-    
+    band1 = fitting_mask & (SPA_deg >= BAND1_GAMMA_MIN) & (SPA_deg <= BAND1_GAMMA_MAX)
+    band2 = fitting_mask & (SPA_deg >= BAND2_GAMMA_MIN) & (SPA_deg < BAND2_GAMMA_MAX)
+    band3 = fitting_mask & (SPA_deg >= BAND3_GAMMA_MIN) & (SPA_deg <= BAND3_GAMMA_MAX)
+    band4 = fitting_mask & (ze_deg < BAND4_ZE_MAX)
+
     multi_band = band1 | band2 | band3 | band4
-    
+
     return multi_band, {
         'band1_antisolar_primary': band1.sum(),
         'band2_antisolar_secondary': band2.sum(),
         'band3_side': band3.sum(),
         'band4_zenith': band4.sum(),
-        'total': multi_band.sum()
+        'total': multi_band.sum(),
+        'bands': {
+            'band1': [BAND1_GAMMA_MIN, BAND1_GAMMA_MAX],
+            'band2': [BAND2_GAMMA_MIN, BAND2_GAMMA_MAX],
+            'band3': [BAND3_GAMMA_MIN, BAND3_GAMMA_MAX],
+            'band4_ze_max': BAND4_ZE_MAX,
+        }
     }
+
+
+def build_safe_sampling_mask(clear_sky_mask, disk, ze_deg, sun_exclusion_mask,
+                             erosion_iters=SAFE_SAMPLING_EROSION_ITERS,
+                             zenith_max_deg=SAFE_SAMPLING_ZENITH_MAX_DEG,
+                             min_pixels=SAFE_SAMPLING_MIN_PIXELS):
+    """Build a conservative sky-only sampling mask for Chauvin fitting.
+
+    This is designed to be robust even when the input clear_sky_mask is too permissive,
+    for example a whole-disk mask on clear days.
+    """
+    base_mask = clear_sky_mask & disk & (~sun_exclusion_mask)
+
+    eroded_mask = base_mask.copy()
+    if erosion_iters > 0:
+        eroded_mask = binary_erosion(base_mask, iterations=erosion_iters)
+
+    candidates = [
+        ("eroded_75deg", eroded_mask & (ze_deg <= zenith_max_deg)),
+        ("base_75deg", base_mask & (ze_deg <= zenith_max_deg)),
+        ("base_80deg", base_mask & (ze_deg <= 80.0)),
+        ("legacy_85deg", base_mask & (ze_deg <= ZE_HORIZON_CUTOFF)),
+    ]
+
+    for label, mask in candidates:
+        if mask.sum() >= min_pixels:
+            return mask, {
+                'label': label,
+                'pixels': int(mask.sum()),
+                'zenith_max_deg': float(zenith_max_deg if '75deg' in label else (80.0 if '80deg' in label else ZE_HORIZON_CUTOFF)),
+                'erosion_iters': int(erosion_iters if label.startswith('eroded') else 0),
+            }
+
+    label, mask = candidates[-1]
+    return mask, {
+        'label': label,
+        'pixels': int(mask.sum()),
+        'zenith_max_deg': float(ZE_HORIZON_CUTOFF),
+        'erosion_iters': 0,
+    }
+
+
+
+def detect_sun_mask_from_rgb(rgb8, disk_mask, cloud_mask=None, percentile=99.6, min_area=40):
+    """Detect sun pixels directly from RGB (independent of semantic annotations)."""
+
+    if cloud_mask is None:
+        cloud_mask = np.zeros(rgb8.shape[:2], dtype=bool)
+
+    # Use non-cloud disk pixels to avoid haze/ground artifacts.
+    search_mask = disk_mask & (~cloud_mask)
+    if not np.any(search_mask):
+        search_mask = disk_mask
+
+    # Brightness in linear RGB space is a good stable sun proxy.
+    rgb_lin = srgb_to_linear(rgb8.astype(np.float32) / 255.0)
+    luminance = 0.2126 * rgb_lin[..., 0] + 0.7152 * rgb_lin[..., 1] + 0.0722 * rgb_lin[..., 2]
+
+    threshold = float(np.percentile(luminance[search_mask], percentile)) if np.any(search_mask) else float(np.percentile(luminance, percentile))
+    candidate_mask = (luminance >= threshold) & search_mask
+
+    # Small cleanup to remove noise and connect bright core pixels.
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    candidate_mask_u8 = (candidate_mask.astype(np.uint8) * 255)
+    candidate_mask_u8 = cv2.morphologyEx(candidate_mask_u8, cv2.MORPH_OPEN, kernel, iterations=1)
+    candidate_mask_u8 = cv2.morphologyEx(candidate_mask_u8, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(candidate_mask_u8, connectivity=8)
+    best_label = 0
+    best_area = 0
+    for lbl in range(1, num_labels):
+        area = int(stats[lbl, cv2.CC_STAT_AREA])
+        if area < min_area:
+            continue
+        if area > best_area:
+            best_area = area
+            best_label = lbl
+
+    if best_label != 0:
+        return labels == best_label
+
+    # Fallback: use brightest pixel inside search region.
+    if np.any(search_mask):
+        idx = np.argmax(np.where(search_mask, luminance, -1.0))
+    else:
+        idx = int(np.argmax(luminance))
+    y, x = np.unravel_index(idx, luminance.shape)
+    fallback = np.zeros_like(search_mask, dtype=np.uint8)
+    cv2.circle(fallback, (x, y), 3, 1, -1)
+    return fallback.astype(bool)
 
 # ==================== MAIN OPTIMIZER ====================
 
@@ -398,31 +516,57 @@ def optimize_realistic_sun(image_path, mask_path, output_dir):
     H, W = rgb8.shape[:2]
     rgb = rgb8.astype(np.float32) / 255.0
     print(f"  Size: {W}×{H}")
-    
+
     class_masks = load_semantic_mask(mask_path)
-    clear_sky_mask = class_masks.get("clear_sky", np.zeros((H, W), dtype=bool))
-    sun_mask_orig = class_masks.get("sun", np.zeros((H, W), dtype=bool))
+    clear_sky_mask_annotation = class_masks.get("clear_sky", np.zeros((H, W), dtype=bool))
     cloud_mask = class_masks.get("cloud", np.zeros((H, W), dtype=bool))
-    
-    print(f"  Clear-sky: {clear_sky_mask.sum()} px")
-    print(f"  Sun: {sun_mask_orig.sum()} px")
-    
+    sun_mask_semantic = class_masks.get("sun", np.zeros((H, W), dtype=bool))
+    sun_mask_orig = np.zeros((H, W), dtype=bool)
+
+    print(f"  Clear-sky annotation: {clear_sky_mask_annotation.sum()} px")
+    print(f"  Cloud: {cloud_mask.sum()} px")
+    print(f"  Semantic sun: {sun_mask_semantic.sum()} px")
+
+    # Prefer user-provided semantic sun mask when available.
+    # This keeps sun exclusion anchored to annotation if provided, fallback to RGB.
+    if sun_mask_semantic.any():
+        sun_mask_orig = sun_mask_semantic.copy()
+        sun_source = "semantic"
+    else:
+        sun_source = "rgb"
+
+
     # Geometry
     rgb_lin = srgb_to_linear(rgb)
-    sky_combined = clear_sky_mask | sun_mask_orig | cloud_mask
+    sky_combined = clear_sky_mask_annotation | cloud_mask
+    if not sky_combined.any():
+        # Fallback to luminance mask if semantic annotation is empty
+        gray = 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
+        th = np.percentile(gray, 99.0)
+        sky_combined = gray >= th
     cx, cy, R = fit_disk(sky_combined.astype(np.uint8) * 255)
-    
+
+    # Build geometry first, then detect sun position.
+    # Sun source is semantic mask when available, else RGB fallback.
+    proj_type = "equisolid"
+    theta, ze_deg, az_nav, disk = build_geometry(H, W, cx, cy, R, proj_type, K=1.4)
+
+    if not sun_mask_orig.any():
+        sun_mask_orig = detect_sun_mask_from_rgb(rgb8, disk_mask=disk, cloud_mask=cloud_mask)
+        sun_source = "rgb"
+
+    class_masks["sun"] = sun_mask_orig
+
     if sun_mask_orig.any():
         ys_sun, xs_sun = np.nonzero(sun_mask_orig)
         sun_x, sun_y = xs_sun.mean(), ys_sun.mean()
     else:
         sun_x, sun_y = cx, cy
-    
+
+    print(f"  Sun source: {sun_source}")
+    print(f"  Sun: {sun_mask_orig.sum()} px")
     print(f"  Sun center: ({sun_x:.1f}, {sun_y:.1f})")
-    
-    # Build geometry
-    proj_type = "equisolid"
-    theta, ze_deg, az_nav, disk = build_geometry(H, W, cx, cy, R, proj_type, K=1.4)
+
     
     sun_y_int, sun_x_int = int(sun_y), int(sun_x)
     sun_az_nav = az_nav[sun_y_int, sun_x_int]
@@ -431,7 +575,7 @@ def optimize_realistic_sun(image_path, mask_path, output_dir):
     gamma = np.radians(SPA_deg)
     
     # Sun exclusion: wider for sky fitting (don't let aureole contaminate sky model)
-    EXCLUSION_RADIUS = 10.0  # Exclude large region from sky fitting
+    EXCLUSION_RADIUS = float(os.environ.get("SUN_EXCLUSION_RADIUS_DEG", SUN_EXCLUSION_RADIUS_DEG))
     sun_exclusion_mask = (SPA_deg <= EXCLUSION_RADIUS) & disk
     print(f"  Sky fitting excludes γ<{EXCLUSION_RADIUS}° ({sun_exclusion_mask.sum():,} px)")
     
@@ -440,15 +584,37 @@ def optimize_realistic_sun(image_path, mask_path, output_dir):
     print("STAGE 1: GRID SEARCH WITH MULTI-BAND STRATEGY (Sun Excluded)")
     print("="*80)
     
-    non_horizon = (ze_deg <= ZE_HORIZON_CUTOFF)
-    fitting_mask_sky = clear_sky_mask & disk & non_horizon & (~sun_exclusion_mask)
+    safe_sampling_zenith_max_deg = float(os.environ.get("SAFE_SAMPLING_ZENITH_MAX_DEG", SAFE_SAMPLING_ZENITH_MAX_DEG))
+    safe_sampling_erosion_iters = int(os.environ.get("SAFE_SAMPLING_EROSION_ITERS", SAFE_SAMPLING_EROSION_ITERS))
+    safe_sampling_min_pixels = int(os.environ.get("SAFE_SAMPLING_MIN_PIXELS", SAFE_SAMPLING_MIN_PIXELS))
+
+    # Use geometry only for sampling domain (no clear-sky semantic mask for sampling weights).
+    sampling_mask_domain = (ze_deg <= safe_sampling_zenith_max_deg) & disk
+    if cloud_mask.any():
+        sampling_mask_domain &= ~cloud_mask
+
+    fitting_mask_sky, sampling_meta = build_safe_sampling_mask(
+        sampling_mask_domain, disk, ze_deg, sun_exclusion_mask,
+        erosion_iters=safe_sampling_erosion_iters,
+        zenith_max_deg=safe_sampling_zenith_max_deg,
+        min_pixels=safe_sampling_min_pixels,
+    )
+    clear_sky_mask = fitting_mask_sky
+    class_masks["clear_sky"] = clear_sky_mask
+    print(f"  Safe sampling mask: {sampling_meta['label']} | zenith≤{sampling_meta['zenith_max_deg']:.1f}° | erosion={sampling_meta['erosion_iters']} px-ish")
+    print(f"  Safe sampling pixels: {fitting_mask_sky.sum():,}")
     
     # Prepare both single-band and multi-band masks
     single_band = fitting_mask_sky & (SPA_deg >= BAND_GAMMA_MIN) & (SPA_deg <= BAND_GAMMA_MAX)
     multi_band, band_stats = create_multi_band_mask(SPA_deg, ze_deg, fitting_mask_sky)
     
-    print(f"  Single-band (88-92°): {single_band.sum():,} px")
+    print(f"  Single-band ({BAND_GAMMA_MIN:.1f}-{BAND_GAMMA_MAX:.1f}°): {single_band.sum():,} px")
     print(f"  Multi-band: {band_stats['total']:,} px (4 bands)")
+    print("  Band windows: "
+          f"1[{BAND1_GAMMA_MIN:.1f},{BAND1_GAMMA_MAX:.1f}], "
+          f"2[{BAND2_GAMMA_MIN:.1f},{BAND2_GAMMA_MAX:.1f}], "
+          f"3[{BAND3_GAMMA_MIN:.1f},{BAND3_GAMMA_MAX:.1f}], "
+          f"4<ζ={BAND4_ZE_MAX:.1f}")
     
     fit_method = "per_channel"
     test_sun_sizes = [(0.8, 0.9), (1.0, 1.0), (1.4, 0.8), (0.7, 1.2)]
@@ -495,8 +661,36 @@ def optimize_realistic_sun(image_path, mask_path, output_dir):
             print(f"  E×{E_scale}, {band_name}: {combined_error:.4f}")
     
     if not results:
-        print("ERROR: Grid search failed!")
-        return
+        print("WARN: No band-strategy results; fallback to full fitting mask")
+        for E_scale, F_scale in test_sun_sizes:
+            band_name = "full"
+            coeffs_dict = fit_per_channel(rgb_lin, theta, gamma, fitting_mask_sky, fitting_mask_sky)
+            if coeffs_dict is None:
+                print(f"  Fallback E×{E_scale}, {band_name}: no coefficients")
+                continue
+
+            rgb_syn, rgb_syn_lin = generate_synthetic_grid(
+                coeffs_dict, theta, gamma, disk, E_scale, F_scale, blue_boost=1.0
+            )
+            clearsky_error, sun_error, combined_error = evaluate_synthetic(
+                rgb_syn_lin, rgb, clear_sky_mask, sun_mask_orig, disk, ze_deg, cloud_mask=cloud_mask
+            )
+            if np.isnan(combined_error):
+                continue
+
+            results.append({
+                'band_strategy': "full",
+                'band_name': band_name,
+                'E_scale': E_scale,
+                'F_scale': F_scale,
+                'coeffs': coeffs_dict,
+                'error': combined_error,
+            })
+            print(f"  Fallback E×{E_scale}, {band_name}: {combined_error:.4f}")
+
+        if not results:
+            print("ERROR: Grid search failed!")
+            return
     
     # Color-aware band selection (prefer single-band when close)
     print(f"\n🎨 COLOR-AWARE BAND SELECTION")
@@ -559,7 +753,8 @@ def optimize_realistic_sun(image_path, mask_path, output_dir):
     
     refiner = ContinuousRefiner(
         rgb, class_masks,
-        theta, gamma, disk, ze_deg, fit_method, sun_exclusion_mask
+        theta, gamma, disk, ze_deg, fit_method, sun_exclusion_mask,
+        sampling_mask=fitting_mask_sky,
     )
     
     print(f"  Optimizing {len(p0)} parameters...")
@@ -608,9 +803,8 @@ def optimize_realistic_sun(image_path, mask_path, output_dir):
     
     rgb_syn_srgb = linear_to_srgb(final_synthetic)
     
-    bg_mask = class_masks.get("background", np.zeros((H, W), dtype=bool))
     rgb_syn_final = rgb_syn_srgb.copy()
-    rgb_syn_final[bg_mask] = 0.0
+    rgb_syn_final[~disk] = 0.0
     rgb_syn_u8 = (np.clip(rgb_syn_final, 0, 1) * 255).astype(np.uint8)
     rgb_syn_u8 = circular_mask(rgb_syn_u8)
     
@@ -633,11 +827,34 @@ def optimize_realistic_sun(image_path, mask_path, output_dir):
                 'refined_error': float(refined_error),
                 'improvement_pct': float((best_grid['error'] - refined_error) / best_grid['error'] * 100) if refined_error < best_grid['error'] else 0.0,
             },
+            'sampling_strategy': {
+                'label': sampling_meta['label'],
+                'safe_sampling_pixels': int(fitting_mask_sky.sum()),
+                'zenith_max_deg': float(sampling_meta['zenith_max_deg']),
+                'erosion_iters': int(sampling_meta['erosion_iters']),
+                'single_band_pixels': int(single_band.sum()),
+                'multi_band_pixels': int(band_stats['total']),
+                'band_breakdown': {
+                    'band1_antisolar_primary': int(band_stats['band1_antisolar_primary']),
+                    'band2_antisolar_secondary': int(band_stats['band2_antisolar_secondary']),
+                    'band3_side': int(band_stats['band3_side']),
+                    'band4_zenith': int(band_stats['band4_zenith']),
+                    'total': int(band_stats['total'])
+                },
+                'band_windows': band_stats.get('bands', {}),
+            },
             'final_result': {
                 'final_error': float(combined_error),
                 'clearsky_error': float(clearsky_error),
                 'sun_error': float(sun_error),
             },
+            'coefficients': {k: ([float(x) for x in v] if isinstance(v, (list, np.ndarray)) else str(v))
+                            for k, v in best_grid.get('coeffs', {}).items()},
+            'refined_params_flat': [float(x) for x in refined_params] if 'refined_params' in dir() else [],
+            'projection': 'equisolid',
+            'disk': {'cx': float(cx), 'cy': float(cy), 'R': float(R)},
+            'sun_position': {'ze_deg': float(sun_ze_deg), 'az_deg': float(sun_az_nav)},
+            'sun_exclusion_radius_deg': float(EXCLUSION_RADIUS),
             'timestamp': datetime.now().isoformat(),
         }, f, indent=2)
     print(f"✅ Saved: {results_file}")
@@ -653,7 +870,7 @@ def optimize_realistic_sun(image_path, mask_path, output_dir):
     
     # Chauvin sky only
     sky_only_srgb = linear_to_srgb(rgb_syn_sky_lin)
-    sky_only_srgb[bg_mask] = 0.0
+    sky_only_srgb[~disk] = 0.0
     sky_only_u8 = (np.clip(sky_only_srgb, 0, 1) * 255).astype(np.uint8)
     sky_only_u8 = circular_mask(sky_only_u8)
     axes[0, 1].imshow(sky_only_u8)
@@ -683,7 +900,7 @@ def optimize_realistic_sun(image_path, mask_path, output_dir):
     
     # Difference
     diff = np.abs(rgb - (rgb_syn_u8.astype(np.float32)/255.0))
-    diff[bg_mask] = 0.0
+    diff[~disk] = 0.0
     axes[1, 2].imshow(diff, cmap='hot', vmin=0, vmax=0.3)
     axes[1, 2].set_title(f"Difference\nCS: {clearsky_error:.4f}, Sun: {sun_error:.4f}", fontsize=14)
     axes[1, 2].axis('off')
